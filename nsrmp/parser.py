@@ -66,3 +66,31 @@ def _parse_step(clause):
 def parse(text):
     """Return a tuple with one Move program per step."""
     return tuple(_parse_step(clause) for clause in split_steps(text))
+
+
+def _np_roles(tokens, pos):
+    """Word groups of one noun phrase: (head words, relation word, anchor words), new_pos.
+    The relation and anchor groups are empty when the phrase has no "which is" clause."""
+    start = pos
+    _, _, pos = _parse_simple_np(tokens, pos)
+    head = tokens[start:pos]
+    if tokens[pos:pos + 2] != ["which", "is"]:
+        return (head, [], []), pos
+    rel, pos = _match_phrase(tokens, pos + 2)
+    anchor_start = pos
+    _, _, pos = _parse_simple_np(tokens, pos)
+    return (head, [rel], tokens[anchor_start:pos]), pos
+
+
+def parse_roles(clause):
+    """The same parse as `_parse_step`, returned as word groups instead of a program (used by
+    the parse-matched neural baseline). Relation/action phrases are reduced to their key word."""
+    tokens = clause.lower().replace(",", " ").split()
+    if not tokens or tokens[0] != "put":
+        raise ValueError(f"a step must start with 'put': {clause!r}")
+    subject, pos = _np_roles(tokens, 1)
+    action, pos = _match_phrase(tokens, pos)
+    reference, pos = _np_roles(tokens, pos)
+    if pos != len(tokens):
+        raise ValueError(f"unexpected words after the instruction: {clause!r}")
+    return {"subject": subject, "reference": reference, "action": [action]}

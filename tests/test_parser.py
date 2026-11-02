@@ -1,7 +1,7 @@
 import pytest
 
 from nsrmp.data import make_dataset
-from nsrmp.parser import parse, split_steps
+from nsrmp.parser import parse, parse_roles, split_steps
 
 
 def test_simple_instruction_parses_to_the_expected_program():
@@ -46,3 +46,14 @@ def test_unknown_words_raise():
 def test_parser_recovers_the_gold_program_of_every_generated_template(kwargs):
     for ex in make_dataset(300, seed=7, n_objects=(3, 8), **kwargs):
         assert parse(ex.text) == ex.program, ex.text
+
+
+def test_role_phrases_split_a_step_into_subject_reference_and_action_words():
+    roles = parse_roles("put the lego which is behind the green dice to the left of the red cube")
+    assert roles == {"subject": (["the", "lego"], ["behind"], ["the", "green", "dice"]),
+                     "reference": (["the", "red", "cube"], [], []),
+                     "action": ["left"]}
+    simple = parse_roles("put the cube in front of the blue object which is to the right of the dice")
+    assert simple["subject"] == (["the", "cube"], [], [])
+    assert simple["reference"] == (["the", "blue", "object"], ["right"], ["the", "dice"])
+    assert simple["action"] == ["front"]

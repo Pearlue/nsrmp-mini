@@ -1,7 +1,8 @@
 import numpy as np
 
-from nsrmp.batch import VOCAB, collate
+from nsrmp.batch import ROLE_GROUPS, VOCAB, collate
 from nsrmp.data import make_dataset
+from nsrmp.parser import parse_roles
 
 
 def test_collate_pads_scenes_and_marks_exactly_the_subject_as_moved():
@@ -33,3 +34,17 @@ def test_select_returns_the_requested_examples_in_order():
     b = collate(make_dataset(5, seed=2))
     sub = b.select([3, 1])
     assert sub.feats.equal(b.feats[[3, 1]]) and sub.programs == [b.programs[3], b.programs[1]]
+
+
+def test_collate_stores_the_parsed_role_word_groups_of_every_step():
+    exs = make_dataset(6, seed=3, n_steps=(1, 2), p_complex=1.0)
+    b = collate(exs)
+    assert b.role_tokens.shape[:3] == (6, 2, len(ROLE_GROUPS))
+    for k, e in enumerate(exs):
+        for s, clause in enumerate(e.text.split(", then ")):
+            roles = parse_roles(clause)
+            expected = list(roles["subject"]) + list(roles["reference"]) + [roles["action"]]
+            for g, words in enumerate(expected):
+                ids = [t for t in b.role_tokens[k, s, g].tolist() if t != 0]
+                assert [VOCAB[t] for t in ids] == words
+        assert b.role_tokens[k, e.n_steps:].abs().sum() == 0

@@ -8,11 +8,13 @@ import numpy as np
 import torch
 
 from nsrmp.data import COLOURS, SHAPES
-from nsrmp.parser import parse, split_steps
+from nsrmp.parser import parse, parse_roles, split_steps
 
 VOCAB = (["<pad>", "put", "the", "which", "is", "to", "left", "right", "of", "in", "front",
           "behind", "object"] + COLOURS + SHAPES)
 _WORD_ID = {w: i for i, w in enumerate(VOCAB)}
+# Word groups the parser gives the parse-matched baseline, one row each in Batch.role_tokens.
+ROLE_GROUPS = ("subj_head", "subj_rel", "subj_anchor", "ref_head", "ref_rel", "ref_anchor", "action")
 
 
 @dataclass
@@ -27,6 +29,7 @@ class Batch:
     is_complex: torch.Tensor  # (B,) bool
     tokens: torch.Tensor    # (B, S, L) word ids per step (for the baseline)
     lengths: torch.Tensor   # (B, S)
+    role_tokens: torch.Tensor  # (B, S, len(ROLE_GROUPS), Lr) word ids per parsed role, 0 = padding
     programs: list          # parsed program (tuple of Moves) per example
 
     def __len__(self):
@@ -39,6 +42,11 @@ class Batch:
         return Batch(**fields)
 
 
+def _role_groups(clause):
+    r = parse_roles(clause)
+    return [*r["subject"], *r["reference"], r["action"]]
+
+
 def collate(examples):
     B = len(examples)
     N = max(len(e.objs) for e in examples)
@@ -48,6 +56,9 @@ def collate(examples):
     feats, boxes, final = np.zeros((B, N, 32)), np.zeros((B, N, 4)), np.zeros((B, N, 4))
     mask, subjects = np.zeros((B, N)), -np.ones((B, S), dtype=np.int64)
     tokens, lengths = np.zeros((B, S, L), dtype=np.int64), np.zeros((B, S), dtype=np.int64)
+    roles = [[_role_groups(c) for c in cs] for cs in clauses]
+    Lr = max(len(g) for rs in roles for r in rs for g in r)
+    role_tokens = np.zeros((B, S, len(ROLE_GROUPS), Lr), dtype=np.int64)
     for k, e in enumerate(examples):
         n = len(e.objs)
         feats[k, :n], mask[k, :n] = e.feats, 1
@@ -58,6 +69,8 @@ def collate(examples):
             words = clause.replace(",", " ").split()
             tokens[k, s, :len(words)] = [_WORD_ID[w] for w in words]
             lengths[k, s] = len(words)
+            for g, group in enumerate(roles[k][s]):
+                role_tokens[k, s, g, :len(group)] = [_WORD_ID[w] for w in group]
     boxes_t, final_t = torch.tensor(boxes, dtype=torch.float32), torch.tensor(final, dtype=torch.float32)
     return Batch(
         feats=torch.tensor(feats, dtype=torch.float32), boxes=boxes_t, final=final_t,
@@ -66,4 +79,5 @@ def collate(examples):
         subjects=torch.tensor(subjects), n_steps=torch.tensor([e.n_steps for e in examples]),
         is_complex=torch.tensor([e.is_complex for e in examples]),
         tokens=torch.tensor(tokens), lengths=torch.tensor(lengths),
+        role_tokens=torch.tensor(role_tokens),
         programs=[parse(e.text) for e in examples])
