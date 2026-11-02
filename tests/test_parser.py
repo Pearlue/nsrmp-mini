@@ -48,12 +48,13 @@ def test_parser_recovers_the_gold_program_of_every_generated_template(kwargs):
         assert parse(ex.text) == ex.program, ex.text
 
 
-def test_role_phrases_split_a_step_into_subject_reference_and_action_words():
+def test_role_phrases_keep_the_same_words_the_program_uses():
+    # Only the concepts the program contains: no "the", and "object" (the ANY wildcard) is dropped.
     roles = parse_roles("put the lego which is behind the green dice to the left of the red cube")
-    assert roles == {"subject": (["the", "lego"], ["behind"], ["the", "green", "dice"]),
-                     "reference": (["the", "red", "cube"], [], []),
+    assert roles == {"subject": (["lego"], ["behind"], ["green", "dice"]),
+                     "reference": (["red", "cube"], [], []),
                      "action": ["left"]}
-    simple = parse_roles("put the cube in front of the blue object which is to the right of the dice")
-    assert simple["subject"] == (["the", "cube"], [], [])
-    assert simple["reference"] == (["the", "blue", "object"], ["right"], ["the", "dice"])
-    assert simple["action"] == ["front"]
+    other = parse_roles("put the cube in front of the blue object which is to the right of the dice")
+    assert other["subject"] == (["cube"], [], [])
+    assert other["reference"] == (["blue"], ["right"], ["dice"])
+    assert other["action"] == ["front"]
