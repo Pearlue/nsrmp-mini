@@ -1,0 +1,21 @@
+[noise] sigma 0.1 seed 0 ours: IOU-M 0.778
+[noise] sigma 0.1 seed 0 parsed_baseline: IOU-M 0.781
+[noise] sigma 0.1 seed 1 ours: IOU-M 0.780
+[noise] sigma 0.1 seed 1 parsed_baseline: IOU-M 0.778
+[noise] sigma 0.1 seed 2 ours: IOU-M 0.771
+[noise] sigma 0.1 seed 2 parsed_baseline: IOU-M 0.798
+[noise] sigma 0.3 seed 0 ours: IOU-M 0.788
+[noise] sigma 0.3 seed 0 parsed_baseline: IOU-M 0.815
+[noise] sigma 0.3 seed 1 ours: IOU-M 0.788
+[noise] sigma 0.3 seed 1 parsed_baseline: IOU-M 0.809
+[noise] sigma 0.3 seed 2 ours: IOU-M 0.783
+[noise] sigma 0.3 seed 2 parsed_baseline: IOU-M 0.794
+[noise] sigma 0.5 seed 0 ours: IOU-M 0.762
+[noise] sigma 0.5 seed 0 parsed_baseline: IOU-M 0.807
+[noise] sigma 0.5 seed 1 ours: IOU-M 0.753
+[noise] sigma 0.5 seed 1 parsed_baseline: IOU-M 0.795
+[noise] sigma 0.5 seed 2 ours: IOU-M 0.762
+[noise] sigma 0.5 seed 2 parsed_baseline: IOU-M 0.803
+real 268.87
+user 254.58
+sys 26.02
