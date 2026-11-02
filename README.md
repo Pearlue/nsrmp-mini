@@ -107,7 +107,7 @@ that are not in the repository (diagnostics only, not reported results):
 | ... with the gold action given (diagnostic) | still collapses |
 | ... with the gold subject given (diagnostic) | learns: IOU-M 0.76 simple / 0.67 complex |
 | Bias-free dot-product word score, "the" kept in the word groups | collapses |
-| Bias-free dot-product word score, separate Find per role, concept words only | grounds subjects (acc. 0.7-1.0) but IOU-M ~0.01 on all 3 seeds at 60 epochs |
+| Bias-free dot-product word score, separate Find per role, concept words only | partly grounds subjects (acc. 0.76-1.0 simple, 0.52-0.99 complex) but IOU-M ~0.01 on all 3 seeds at 60 epochs |
 | Bias-free dot-product word score, **one Find shared by subject, reference and anchor** (final) | learns on all 3 seeds (IOU-M 0.78-0.80) |
 
 What we found:
@@ -129,8 +129,9 @@ What we found:
    the others. A variant sharing the module across roles but with separate anchor weights also learned on all 3 seeds
    (IOU-M 0.79-0.82 simple, 0.74-0.77 complex).
 
-These fixes make no sense for the GRU baseline: it reads raw text, with no word groups to restrict, and the previous
-dot-product attention attempt on it did not help. So it is left unchanged by design. We did **not** test whether the same
+These fixes do not transfer to the GRU baseline: it has no word groups to restrict, dot-product attention was already
+tried on it without success, and with its single sentence vector a shared Find would give subject = reference. So it is
+left unchanged by design. We did **not** test whether the same
 mechanism fully explains the GRU collapse; `results/diagnose_baseline.txt` remains the evidence for it (loss equal to
 "move nothing", learns with an oracle subject or with extra subject supervision). The `Find` word score is a dot product
 between projected object features and word embeddings, which is close in spirit to concept matching. So the remaining
@@ -207,7 +208,9 @@ parse-matched neural baseline is on par with our neuro-symbolic model on the 3-5
 and degrades *less* with more objects (0.771 vs 0.707 at 10 objects) and more steps (0.729 vs 0.694 at 5 steps).
 Our model's placement accuracy is slightly higher (0.955 vs 0.940). So in this synthetic world we do **not** observe
 the paper's main result, that symbolic programs beat NMN+, especially on complex instructions (paper: NMN+ 0.31 vs 0.64).
-The large gap to the end-to-end GRU baseline (0.776 vs 0.005) comes from the parse, not from symbolic execution.
+The large gap to the end-to-end GRU baseline (0.776 vs 0.005) is therefore not caused by symbolic execution,
+since a parse-matched neural model closes it. But the parse alone was not enough either: with the spec's concat-MLP
+attention the parse-matched model collapsed too, so the attention design (word-only scores, one shared Find) mattered as well.
 
 **Why our world probably cannot show the paper's effect.**
 1. **Relations are easy here.** Every relation is a comparison of two box centres, and every noun phrase has at most

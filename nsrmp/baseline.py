@@ -1,4 +1,6 @@
-"""Purely neural baseline, NMN+-like (paper Sec. IV-B "NMN+" comparison).
+"""Purely neural baselines (paper Sec. IV-B "NMN+" comparison).
+
+`NeuralBaseline` is the end-to-end GRU baseline; `ParsedNeuralBaseline` (below) is the parse-matched one.
 
 It sees the same object features/boxes and uses the same Action Simulator and loss as the
 neuro-symbolic model, but reads the instruction with a GRU and never builds a program.

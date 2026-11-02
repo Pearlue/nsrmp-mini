@@ -32,7 +32,7 @@ def test_baseline_reads_the_words_not_the_parsed_program():
 
 def test_baseline_training_lowers_the_loss():
     # Note: this baseline does not learn to ground subjects from the final-box loss alone
-    # (see README, "Baseline plateau"), so we only check that optimisation makes progress.
+    # (see README, "Other observations"), so we only check that optimisation makes progress.
     data = collate(make_dataset(256, seed=2))
     model = NeuralBaseline()
     history = train(model, data, epochs=12, seed=0)

@@ -44,7 +44,7 @@ def test_parsed_baseline_training_lowers_the_loss():
 
 def test_parsed_baseline_attention_depends_only_on_the_words_when_there_is_no_relation():
     # Nothing word-independent may rank objects, otherwise attention collapses onto an arbitrary
-    # object before grounding is learned (see README, "Why the attention design matters").
+    # object before grounding is learned (see README, "Making the parse-matched baseline learn").
     b = collate(make_dataset(8, seed=4, n_objects=(5, 5), p_complex=0.0))
     b.role_tokens[:, :, 0] = 0  # empty subject head, and simple phrases have no relation
     torch.manual_seed(0)

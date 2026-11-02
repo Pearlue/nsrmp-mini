@@ -1,4 +1,4 @@
-"""Why does the NMN+-like baseline score IOU-M ~ 0? Three quick diagnostics (about 2 minutes).
+"""Why does the end-to-end GRU baseline (NeuralBaseline) score IOU-M ~ 0? Three quick diagnostics (about 2 minutes).
 
 1. Its final training loss equals the loss of "move nothing" -> it sits on the trivial plateau.
 2. Oracle subject: telling it the true subject (diagnostic only) lets it learn to move boxes.
