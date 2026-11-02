@@ -15,7 +15,7 @@
    {
     "seed": 0,
     "final_train_loss": 0.28856701803207396,
-    "train_seconds": 21.031288862228394,
+    "train_seconds": 21.082951068878174,
     "test": {
      "overall": {
       "iou": 0.9300110340118408,
@@ -90,7 +90,7 @@
    {
     "seed": 1,
     "final_train_loss": 0.28019914627075193,
-    "train_seconds": 17.992029905319214,
+    "train_seconds": 18.159153938293457,
     "test": {
      "overall": {
       "iou": 0.9299693703651428,
@@ -165,7 +165,7 @@
    {
     "seed": 2,
     "final_train_loss": 0.31260236287117005,
-    "train_seconds": 18.323366165161133,
+    "train_seconds": 19.24657416343689,
     "test": {
      "overall": {
       "iou": 0.9273631572723389,
@@ -242,7 +242,7 @@
    {
     "seed": 0,
     "final_train_loss": 2.272585548400879,
-    "train_seconds": 23.137863159179688,
+    "train_seconds": 23.29146385192871,
     "test": {
      "overall": {
       "iou": 0.7463719248771667,
@@ -317,7 +317,7 @@
    {
     "seed": 1,
     "final_train_loss": 2.2688444595336916,
-    "train_seconds": 23.90312099456787,
+    "train_seconds": 22.031874895095825,
     "test": {
      "overall": {
       "iou": 0.7427946925163269,
@@ -392,7 +392,7 @@
    {
     "seed": 2,
     "final_train_loss": 2.267204984664917,
-    "train_seconds": 23.618547201156616,
+    "train_seconds": 22.608286142349243,
     "test": {
      "overall": {
       "iou": 0.7417579889297485,
@@ -469,7 +469,7 @@
    {
     "seed": 0,
     "final_train_loss": 0.2608740417957306,
-    "train_seconds": 25.3848659992218,
+    "train_seconds": 25.30278182029724,
     "test": {
      "overall": {
       "iou": 0.9364405274391174,
@@ -544,7 +544,7 @@
    {
     "seed": 1,
     "final_train_loss": 0.25561935591697693,
-    "train_seconds": 25.994500160217285,
+    "train_seconds": 24.76298189163208,
     "test": {
      "overall": {
       "iou": 0.9348792433738708,
@@ -619,7 +619,7 @@
    {
     "seed": 2,
     "final_train_loss": 0.2819908092021942,
-    "train_seconds": 26.16530728340149,
+    "train_seconds": 25.15064287185669,
     "test": {
      "overall": {
       "iou": 0.9329227805137634,
@@ -693,5 +693,5 @@
    }
   ]
  },
- "total_seconds": 219.43266987800598
+ "total_seconds": 216.65145897865295
 }

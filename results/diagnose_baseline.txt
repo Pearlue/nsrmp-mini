@@ -1,0 +1,4 @@
+loss of 'move nothing' on the test set: 2.22
+1. baseline final training loss 2.29; test {'iou': 0.7437335848808289, 'iou_m': 0.003919816110283136, 'subject_acc': 0.2639999985694885, 'placement_acc': 0.007000000216066837}
+2. oracle subject: {'iou': 0.8812791705131531, 'iou_m': 0.519774317741394, 'subject_acc': 1.0, 'placement_acc': 0.6389999985694885}
+3. extra subject-supervision loss: {'iou': 0.7731835842132568, 'iou_m': 0.313070148229599, 'subject_acc': 0.8619999885559082, 'placement_acc': 0.5049999952316284}
