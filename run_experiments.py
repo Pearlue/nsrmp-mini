@@ -1,7 +1,8 @@
 """Run the experiments and write results/ (JSON, markdown tables, PNG plots).
 
 Paper link: Sec. IV, Table II (simple vs complex instructions, ours vs NMN+) and Fig. 4
-(generalisation to more objects / more steps). Everything is reported as mean +- std over seeds.
+(generalisation to more objects / more steps). Everything is reported as mean +- sample std
+(ddof=1) over seeds.
 
     python run_experiments.py --phase 1      # Table II + Fig. 4a analogues
     python run_experiments.py --phase 2      # Fig. 4b analogue (multi-step)
@@ -20,7 +21,7 @@ import torch
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from nsrmp.baseline import NeuralBaseline  # noqa: E402
+from nsrmp.baseline import NeuralBaseline, ParsedNeuralBaseline  # noqa: E402
 from nsrmp.batch import collate  # noqa: E402
 from nsrmp.data import make_dataset  # noqa: E402
 from nsrmp.metrics import evaluate  # noqa: E402
@@ -28,7 +29,9 @@ from nsrmp.model import NSModel  # noqa: E402
 from nsrmp.train import train  # noqa: E402
 
 METRICS = ("iou", "iou_m", "subject_acc", "placement_acc")
-LABELS = {"ours": "Ours (neuro-symbolic)", "baseline": "Baseline (NMN+-like)",
+LABELS = {"ours": "Ours (neuro-symbolic)",
+          "parsed_baseline": "Parse-matched neural baseline (NMN+-like)",
+          "baseline": "End-to-end GRU baseline",
           "ours_no_curriculum": "Ours, no curriculum"}
 
 
@@ -42,7 +45,8 @@ class Config:
 
 
 def mean_std(values):
-    return float(np.mean(values)), float(np.std(values))
+    """Mean and sample standard deviation (ddof=1: only 3 seeds)."""
+    return float(np.mean(values)), float(np.std(values, ddof=1))
 
 
 def fmt(values):
@@ -62,7 +66,8 @@ def _evaluate_splits(model, test):
 
 def _models(curriculum_ablation):
     """(name, factory, use_curriculum)."""
-    entries = [("ours", NSModel, True), ("baseline", NeuralBaseline, True)]
+    entries = [("ours", NSModel, True), ("parsed_baseline", ParsedNeuralBaseline, True),
+               ("baseline", NeuralBaseline, True)]
     if curriculum_ablation:
         entries.append(("ours_no_curriculum", NSModel, False))
     return entries
@@ -99,7 +104,7 @@ def _plot(results, outdir, filename, xlabel, train_range):
     for model_name, runs in results["runs"].items():
         xs = sorted(int(v) for v in runs[0]["generalisation"])
         series = np.array([[r["generalisation"][str(x)]["iou_m"] for x in xs] for r in runs])
-        mean, std = series.mean(0), series.std(0)
+        mean, std = series.mean(0), series.std(0, ddof=1)
         ax.plot(xs, mean, marker="o", label=LABELS[model_name])
         ax.fill_between(xs, mean - std, mean + std, alpha=0.2)
     ax.axvspan(*train_range, color="gray", alpha=0.1, label="training range")
@@ -146,7 +151,7 @@ def run_phase1(cfg, outdir):
                        lambda n: dict(n_objects=(n, n)), "phase1", ablation=True)
     _plot(results, outdir, "fig4a_objects.png", "number of objects in the scene", (3, 5))
     (outdir / "results_phase1.md").write_text(
-        "### Table II analogue (mean ± std over seeds)\n\n" + _table_ii_markdown(results)
+        "### Table II analogue (mean ± sample std over seeds)\n\n" + _table_ii_markdown(results)
         + "\n\n### IOU-M vs number of objects (Fig. 4a analogue)\n\n"
         + _generalisation_markdown(results, "objects") + "\n")
     return results
@@ -164,7 +169,7 @@ def run_phase2(cfg, outdir):
     overall = _table(results, columns, [c[0] for c in columns],
                      lambda runs, c: fmt([r["test"]["overall"][c[1]] for r in runs]))
     (outdir / "results_phase2.md").write_text(
-        "### Multi-step test set, 1-2 steps (mean ± std over seeds)\n\n" + overall
+        "### Multi-step test set, 1-2 steps (mean ± sample std over seeds)\n\n" + overall
         + "\n\n### IOU-M vs number of steps (Fig. 4b analogue)\n\n"
         + _generalisation_markdown(results, "steps") + "\n")
     return results
