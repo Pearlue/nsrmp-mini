@@ -47,7 +47,7 @@ def mean_std(values):
 
 def fmt(values):
     m, s = mean_std(values)
-    return f"{m:.2f} ± {s:.2f}"
+    return f"{m:.3f} ± {s:.3f}"
 
 
 def _subset(batch, keep):

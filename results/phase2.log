@@ -1,0 +1,6 @@
+[phase2] seed 0 ours: IOU-M 0.775 (37s)
+[phase2] seed 0 baseline: IOU-M 0.008 (29s)
+[phase2] seed 1 ours: IOU-M 0.779 (33s)
+[phase2] seed 1 baseline: IOU-M 0.006 (30s)
+[phase2] seed 2 ours: IOU-M 0.775 (33s)
+[phase2] seed 2 baseline: IOU-M 0.005 (29s)
