@@ -1,0 +1,68 @@
+"""Rule-based semantic parser: instruction text -> program.
+
+Paper link: Sec. III-A (Language Parser). The paper's lexer/parser is *given* when training with
+programs (an ablation in their repo); we do the same with a small deterministic recursive-descent
+parser over the known keywords. Grammar:
+
+    instruction := step ("," "then" step)*
+    step        := "put" NP ACTION_PHRASE NP
+    NP          := "the" [COLOUR] (SHAPE | "object") ["which" "is" RELATION_PHRASE SIMPLE_NP]
+"""
+from nsrmp.data import ACTIONS, ANY, COLOURS, RELATIONS, REL_PHRASE, SHAPES, noun_phrase_program
+
+
+def split_steps(text):
+    """The 'given splitter' also used by the baseline."""
+    return [clause.strip(" ,") for clause in text.split(" then ")]
+
+
+def _match_phrase(tokens, pos):
+    """Return (relation, new_pos) if a relation phrase starts at tokens[pos]."""
+    for rel, phrase in REL_PHRASE.items():
+        words = phrase.split()
+        if tokens[pos:pos + len(words)] == words:
+            return rel, pos + len(words)
+    raise ValueError(f"expected a relation phrase at word {pos}: {' '.join(tokens)}")
+
+
+def _parse_simple_np(tokens, pos):
+    if tokens[pos:pos + 1] != ["the"]:
+        raise ValueError(f"expected 'the' at word {pos}: {' '.join(tokens)}")
+    pos += 1
+    colour = ANY
+    if pos < len(tokens) and tokens[pos] in COLOURS:
+        colour, pos = tokens[pos], pos + 1
+    if pos < len(tokens) and tokens[pos] in SHAPES:
+        shape = tokens[pos]
+    elif pos < len(tokens) and tokens[pos] == "object":
+        shape = ANY
+    else:
+        raise ValueError(f"expected a shape at word {pos}: {' '.join(tokens)}")
+    return colour, shape, pos + 1
+
+
+def _parse_np(tokens, pos):
+    colour, shape, pos = _parse_simple_np(tokens, pos)
+    if tokens[pos:pos + 2] != ["which", "is"]:
+        return noun_phrase_program(colour, shape), pos
+    rel, pos = _match_phrase(tokens, pos + 2)
+    a_colour, a_shape, pos = _parse_simple_np(tokens, pos)
+    anchor = noun_phrase_program(a_colour, a_shape)
+    return noun_phrase_program(colour, shape, source=("Relate", anchor, rel)), pos
+
+
+def _parse_step(clause):
+    tokens = clause.lower().replace(",", " ").split()
+    if not tokens or tokens[0] != "put":
+        raise ValueError(f"a step must start with 'put': {clause!r}")
+    subject, pos = _parse_np(tokens, 1)
+    rel, pos = _match_phrase(tokens, pos)
+    reference, pos = _parse_np(tokens, pos)
+    if pos != len(tokens):
+        raise ValueError(f"unexpected words after the instruction: {clause!r}")
+    return ("Move", ACTIONS[RELATIONS.index(rel)], subject, reference)
+
+
+def parse(text):
+    """Return a tuple with one Move program per step."""
+    return tuple(_parse_step(clause) for clause in split_steps(text))
