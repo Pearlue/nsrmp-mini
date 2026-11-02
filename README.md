@@ -61,10 +61,11 @@ like with like**.
 ```bash
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/pytest -q                              # 56 tests
+.venv/bin/pytest -q                              # 59 tests
 .venv/bin/python run_experiments.py --phase all  # ~7 min on an M2 Pro CPU
 .venv/bin/python diagnose_baseline.py            # ~2 min, explains the GRU baseline result
-.venv/bin/python run_experiments.py --phase noise # ~3 min, optional feature-noise sweep
+.venv/bin/python run_experiments.py --phase noise # ~4.5 min, optional feature-noise sweep
+.venv/bin/python diagnose_parsed_baseline.py     # ~3 min, re-runs the parse-matched diagnostics table
 ```
 
 Settings used for the results below: 4000 train / 1000 test examples (50/50 simple/complex, 3-5 objects),
@@ -96,38 +97,44 @@ isolates *symbolic program execution* vs *neural attention*. We report two neura
 ### Making the parse-matched baseline learn (diagnostics, seed 0 unless stated)
 
 The first version, with the per-role concat-MLP attention `MLP([f_i; box_i; phrase_vec])` from the spec, **collapsed exactly like
-the GRU baseline** (IOU-M 0.004, subject acc. 0.26) even with the parse. What we checked, with throwaway single-seed scripts
-that are not in the repository (diagnostics only, not reported results):
+the GRU baseline** even with the parse. Every row below is re-run by `diagnose_parsed_baseline.py` (about 3 min; output in
+`results/diagnose_parsed_baseline.{txt,json}`). These are diagnostics only, not reported results. Phase-1 data, same training as above;
+IOU-M and subject accuracy are given as simple / complex.
 
-| Variant | Outcome |
-|---|---|
-| Concat-MLP attention, per role (spec design), 30 epochs | collapses: IOU-M 0.004, subject acc. 0.26 |
-| ... with one head shared by subject and reference / NMN-style product fusion / boxes fed only through the relation term | all collapse (IOU-M <= 0.006) |
-| ... with the subject excluded from the reference inside `apply_move` (tried on all three models) | no change for any model |
-| ... with the gold action given (diagnostic) | still collapses |
-| ... with the gold subject given (diagnostic) | learns: IOU-M 0.76 simple / 0.67 complex |
-| Bias-free dot-product word score, "the" kept in the word groups | collapses |
-| Bias-free dot-product word score, separate Find per role, concept words only | partly grounds subjects (acc. 0.76-1.0 simple, 0.52-0.99 complex) but IOU-M ~0.01 on all 3 seeds at 60 epochs |
-| Bias-free dot-product word score, **one Find shared by subject, reference and anchor** (final) | learns on all 3 seeds (IOU-M 0.78-0.80) |
+| Variant | Epochs, seeds | Outcome |
+|---|---|---|
+| Concat-MLP attention, per role (spec design), all phrase words | 30, seed 0 | collapses: IOU-M 0.005 / 0.003, subject acc. 0.26 / 0.26 |
+| ... one head shared by subject and reference; NMN-style product fusion (per role or shared); boxes fed only through the relation term | 30, seed 0 | all collapse: IOU-M <= 0.005, subject acc. <= 0.30 |
+| ... subject excluded from the reference inside `apply_move` (tried on all three models) | 30, seed 0 | no change: this baseline and the GRU baseline still collapse; NSModel 0.779 / 0.761 |
+| ... gold action given (diagnostic) | 30, seed 0 | still collapses |
+| ... gold subject given (diagnostic) | 30, seed 0 | learns: IOU-M 0.756 / 0.669 |
+| Bias-free dot-product word score, separate Find per role, "the" kept | 30, seed 0 | collapses: IOU-M 0.005 / 0.003 |
+| ... concept words only | 60, seeds 0-2 | learns on 1 of 3 seeds (seed 2: 0.806 / 0.758); seeds 0, 1 collapse (IOU-M <= 0.007, subject acc. 0.44-0.75 simple) |
+| ... one Find shared by subject and reference, separate anchor weights | 60, seeds 0-2 | learns on 1 of 3 seeds (seed 2: 0.790 / 0.738); seeds 0, 1 collapse |
+| Bias-free dot-product, **one Find shared by subject, reference and anchor** (final) | 60, seeds 0-2 | learns on all 3 seeds: IOU-M 0.781-0.800 / 0.772-0.796 |
 
-What we found:
-1. **The collapse is fast and word-independent.** Attention entropy over objects falls from 1.01 to 0.03 within two
-   epochs while the weight on the gold subject stays at chance (0.26). In 89% of test examples the subject and reference
-   attention pick the *same* object, and the Action Simulator learns to leave it in place: "move nothing".
+The two "1 of 3 seeds" variants are fragile. An earlier, unscripted run, which built its modules in a different order
+and so started from a different initialisation, gave different seed outcomes. Only the final design learned in every
+run we made, and three seeds are still a small sample.
+
+What we found (the spec design, seed 0, from the same script):
+1. **The collapse is fast and word-independent.** The entropy of the subject attention on the test set falls from 1.37
+   to 0.22 after one epoch and to 0.02 by the end, while the weight on the gold subject stays at chance (0.26) throughout.
+   In 91% of test examples the subject and reference attention pick the *same* object, and the Action Simulator learns
+   to leave it in place: "move nothing".
 2. **The gradient itself is not the problem.** At initialisation, `-dL/dw` favours the gold subject over the other
-   objects in 91% of examples. But a concat MLP can lower the loss faster by sharpening attention on cues that ignore
-   the words (box position, features), and once a softmax is saturated its gradient vanishes.
+   objects in 94% of simple test examples. But a concat MLP can lower the loss faster by sharpening attention on cues that
+   ignore the words (box position, features), and once a softmax is saturated its gradient vanishes.
 3. **The soft `apply_move` blend makes this a strong local minimum.** Under the L1 loss, when the reference is
-   unknown the best Action Simulator output is "stay put", and with a stay-put simulator neither the subject nor the
+   unknown, the best Action Simulator output is "stay put". With a stay-put simulator, neither the subject nor the
    reference attention receives any signal. The oracle-subject run shows that everything else (reference, relation
    context, action, simulator) learns once the subject is right.
-4. **What fixed it** (both are structural choices, applied only to this baseline and documented here; no subject
-   supervision, no per-model learning rate or epochs):
-   (a) the word-object score is a **bias-free dot product** over **only the parsed concept words**, so with no words
-   every object scores the same and attention can only sharpen by matching words; (b) **one `Find` module for every
-   noun phrase**, as in NMN and as our model shares Filter across roles, so grounding learned for one role transfers to
-   the others. A variant sharing the module across roles but with separate anchor weights also learned on all 3 seeds
-   (IOU-M 0.79-0.82 simple, 0.74-0.77 complex).
+4. **What fixed it.** Both changes are structural choices, applied only to this baseline and documented here. There is
+   no subject supervision, and no per-model learning rate or epoch count.
+   (a) The word-object score is a **bias-free dot product** over **only the parsed concept words**, so with no words
+   every object scores the same and attention can only sharpen by matching words.
+   (b) **One `Find` module serves every noun phrase**, including the anchor, as in NMN and as our model shares Filter
+   across roles. Grounding learned for one role then transfers to the others.
 
 These fixes do not transfer to the GRU baseline: it has no word groups to restrict, dot-product attention was already
 tried on it without success, and with its single sentence vector a shared Find would give subject = reference. So it is

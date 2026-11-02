@@ -1,0 +1,296 @@
+{
+ "rows": [
+  {
+   "row": "Concat-MLP attention per role (spec design)",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004653440322726965,
+     "subject_acc_simple": 0.257999986410141,
+     "iou_m_complex": 0.0032013296149671078,
+     "subject_acc_complex": 0.2639999985694885
+    }
+   ]
+  },
+  {
+   "row": "... one head shared by subject and reference",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.00465671019628644,
+     "subject_acc_simple": 0.2619999945163727,
+     "iou_m_complex": 0.0035514759365469217,
+     "subject_acc_complex": 0.2680000066757202
+    }
+   ]
+  },
+  {
+   "row": "... NMN-style product fusion",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.0029909221921116114,
+     "subject_acc_simple": 0.27799999713897705,
+     "iou_m_complex": 0.0031700788531452417,
+     "subject_acc_complex": 0.2720000147819519
+    }
+   ]
+  },
+  {
+   "row": "... product fusion, shared head",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004712073598057032,
+     "subject_acc_simple": 0.3019999861717224,
+     "iou_m_complex": 0.00320546911098063,
+     "subject_acc_complex": 0.28600001335144043
+    }
+   ]
+  },
+  {
+   "row": "... boxes fed only through the relation term",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004885510541498661,
+     "subject_acc_simple": 0.28999999165534973,
+     "iou_m_complex": 0.003178390208631754,
+     "subject_acc_complex": 0.2720000147819519
+    }
+   ]
+  },
+  {
+   "row": "... subject excluded from the reference",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004653614480048418,
+     "subject_acc_simple": 0.2619999945163727,
+     "iou_m_complex": 0.0032006052788347006,
+     "subject_acc_complex": 0.257999986410141
+    }
+   ]
+  },
+  {
+   "row": "GRU baseline, subject excluded from the reference",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004653238691389561,
+     "subject_acc_simple": 0.25999999046325684,
+     "iou_m_complex": 0.0032013938762247562,
+     "subject_acc_complex": 0.2680000066757202
+    }
+   ]
+  },
+  {
+   "row": "NSModel, subject excluded from the reference",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.7788789868354797,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7610357999801636,
+     "subject_acc_complex": 1.0
+    }
+   ]
+  },
+  {
+   "row": "... gold action given (diagnostic)",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004643922671675682,
+     "subject_acc_simple": 0.27000001072883606,
+     "iou_m_complex": 0.00320273800753057,
+     "subject_acc_complex": 0.27000001072883606
+    }
+   ]
+  },
+  {
+   "row": "... gold subject given (diagnostic)",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.7558921575546265,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.6693039536476135,
+     "subject_acc_complex": 1.0
+    }
+   ]
+  },
+  {
+   "row": "Dot-product word score, 'the' kept",
+   "epochs": 30,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004653137642890215,
+     "subject_acc_simple": 0.3540000021457672,
+     "iou_m_complex": 0.0032010218128561974,
+     "subject_acc_complex": 0.3100000023841858
+    }
+   ]
+  },
+  {
+   "row": "Dot-product, separate Find per role, concept words only",
+   "epochs": 60,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004408791195601225,
+     "subject_acc_simple": 0.43799999356269836,
+     "iou_m_complex": 0.0032007021363824606,
+     "subject_acc_complex": 0.38199999928474426
+    },
+    {
+     "seed": 1,
+     "iou_m_simple": 0.006578557658940554,
+     "subject_acc_simple": 0.75,
+     "iou_m_complex": 0.00494717713445425,
+     "subject_acc_complex": 0.5680000185966492
+    },
+    {
+     "seed": 2,
+     "iou_m_simple": 0.8059425950050354,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7580805420875549,
+     "subject_acc_complex": 0.9779999852180481
+    }
+   ]
+  },
+  {
+   "row": "Dot-product, shared Find with separate anchor weights",
+   "epochs": 60,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.004761575721204281,
+     "subject_acc_simple": 0.4699999988079071,
+     "iou_m_complex": 0.0032014050520956516,
+     "subject_acc_complex": 0.41200000047683716
+    },
+    {
+     "seed": 1,
+     "iou_m_simple": 0.0065780095756053925,
+     "subject_acc_simple": 0.5680000185966492,
+     "iou_m_complex": 0.005112223327159882,
+     "subject_acc_complex": 0.41200000047683716
+    },
+    {
+     "seed": 2,
+     "iou_m_simple": 0.7901483178138733,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7376007437705994,
+     "subject_acc_complex": 0.9800000190734863
+    }
+   ]
+  },
+  {
+   "row": "Dot-product, one shared Find (final ParsedNeuralBaseline)",
+   "epochs": 60,
+   "per_seed": [
+    {
+     "seed": 0,
+     "iou_m_simple": 0.7806167602539062,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7823588252067566,
+     "subject_acc_complex": 1.0
+    },
+    {
+     "seed": 1,
+     "iou_m_simple": 0.7836571335792542,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7723085880279541,
+     "subject_acc_complex": 0.9980000257492065
+    },
+    {
+     "seed": 2,
+     "iou_m_simple": 0.8000290393829346,
+     "subject_acc_simple": 1.0,
+     "iou_m_complex": 0.7961111664772034,
+     "subject_acc_complex": 0.9980000257492065
+    }
+   ]
+  }
+ ],
+ "mechanism": {
+  "entropy_by_epoch": [
+   1.3727482557296753,
+   0.2218388020992279,
+   0.11748455464839935,
+   0.08968989551067352,
+   0.07290468364953995,
+   0.06472647190093994,
+   0.05939352512359619,
+   0.05104599893093109,
+   0.047219838947057724,
+   0.04323575273156166,
+   0.039318013936281204,
+   0.04007449373602867,
+   0.034458912909030914,
+   0.03684980422258377,
+   0.03174464404582977,
+   0.029819628223776817,
+   0.027076559141278267,
+   0.02440287172794342,
+   0.024021003395318985,
+   0.024741394445300102,
+   0.027011726051568985,
+   0.026348834857344627,
+   0.022612793371081352,
+   0.022365501150488853,
+   0.021715281531214714,
+   0.022003551945090294,
+   0.02150624990463257,
+   0.021461930125951767,
+   0.02111692912876606,
+   0.021114705130457878
+  ],
+  "gold_weight_by_epoch": [
+   0.2596622407436371,
+   0.266195684671402,
+   0.2649844288825989,
+   0.2620173692703247,
+   0.2646831274032593,
+   0.2611076533794403,
+   0.2602180540561676,
+   0.2613488733768463,
+   0.2592443525791168,
+   0.2577937841415405,
+   0.25967174768447876,
+   0.257572740316391,
+   0.25949111580848694,
+   0.2586840093135834,
+   0.2596544325351715,
+   0.258731871843338,
+   0.2609217166900635,
+   0.2602619230747223,
+   0.261277437210083,
+   0.2600046396255493,
+   0.26058802008628845,
+   0.2605636417865753,
+   0.26046931743621826,
+   0.2611381709575653,
+   0.26049116253852844,
+   0.26092663407325745,
+   0.26095160841941833,
+   0.26103341579437256,
+   0.2610631287097931,
+   0.26108455657958984
+  ],
+  "same_object_fraction": 0.906000018119812,
+  "gold_gradient_favoured_fraction": 0.9419999718666077
+ }
+}
