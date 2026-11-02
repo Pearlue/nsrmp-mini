@@ -10,15 +10,17 @@ def loss_fn(pred, gold, mask, beta=1.0):
     return (per_object * mask).sum(-1).mean()
 
 
-def train(model, data, epochs, seed=0, curriculum=True, lr=2e-3, batch_size=64, beta=1.0,
+def train(model, data, epochs, seed=0, curriculum=True, lr=3e-3, batch_size=64, beta=1.0,
           on_epoch=None):
-    """Adam + mini-batches. With `curriculum`, the first third of the epochs uses only simple
+    """Adam + mini-batches, learning rate decayed to 0 with a cosine schedule (so the Action
+    Simulator can settle to precise boxes). With `curriculum`, the first third of the epochs uses only simple
     instructions, then all instructions (paper Sec. III-D). Returns the mean loss per epoch.
 
     `on_epoch(epoch, n_examples_used)` is an optional hook (used by tests and logging).
     """
     torch.manual_seed(seed)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     simple_idx = (~data.is_complex).nonzero().flatten()
     history = []
     for epoch in range(epochs):
@@ -37,5 +39,6 @@ def train(model, data, epochs, seed=0, curriculum=True, lr=2e-3, batch_size=64, 
             loss.backward()
             optimizer.step()
             total += loss.item() * len(batch)
+        schedule.step()
         history.append(total / len(order))
     return history
