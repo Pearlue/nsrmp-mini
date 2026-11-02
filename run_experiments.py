@@ -152,6 +152,24 @@ def run_phase1(cfg, outdir):
     return results
 
 
+def run_phase2(cfg, outdir):
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    scenes = dict(n_objects=(3, 5))
+    results = _run_all(cfg, outdir, dict(scenes, n_steps=(1, 2)), dict(scenes, n_steps=(1, 2)), range(1, 6),
+                       lambda k: dict(scenes, n_steps=(k, k)), "phase2", ablation=False)
+    _plot(results, outdir, "fig4b_steps.png", "number of steps in the instruction", (1, 2))
+    columns = [("IOU", "iou"), ("IOU-M", "iou_m"), ("Subject acc.", "subject_acc"),
+               ("Placement acc.", "placement_acc")]
+    overall = _table(results, columns, [c[0] for c in columns],
+                     lambda runs, c: fmt([r["test"]["overall"][c[1]] for r in runs]))
+    (outdir / "results_phase2.md").write_text(
+        "### Multi-step test set, 1-2 steps (mean ± std over seeds)\n\n" + overall
+        + "\n\n### IOU-M vs number of steps (Fig. 4b analogue)\n\n"
+        + _generalisation_markdown(results, "steps") + "\n")
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", choices=["1", "2", "all"], default="all")
@@ -163,6 +181,8 @@ def main():
     cfg = Config(n_train=args.n_train, epochs=args.epochs, seeds=tuple(range(args.seeds)))
     if args.phase in ("1", "all"):
         run_phase1(cfg, args.out)
+    if args.phase in ("2", "all"):
+        run_phase2(cfg, args.out)
 
 
 if __name__ == "__main__":
