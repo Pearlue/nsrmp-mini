@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from run_experiments import Config, mean_std, run_noise, run_phase1, run_phase2
+from run_experiments import Config, fmt, mean_std, run_noise, run_phase1, run_phase2
 
 TINY = Config(n_train=64, n_test=40, n_gen=20, epochs=3, seeds=(0, 1))
 
@@ -47,3 +47,14 @@ def test_noise_sweep_trains_both_parse_given_models_at_every_noise_level(tmp_pat
         assert [r["seed"] for r in model["0.5"]] == [0, 1]
         assert set(model["0.5"][0]["test"]) == {"overall", "simple", "complex"}
     assert "σ=0.5" in (tmp_path / "results_noise.md").read_text()
+
+
+def test_a_single_seed_reports_no_std_instead_of_nan():
+    assert mean_std([0.5]) == (0.5, 0.0)
+    assert fmt([0.5]) == "0.500 ± n/a"
+
+
+def test_phase1_with_one_seed_writes_tables_without_nan(tmp_path):
+    run_phase1(Config(n_train=32, n_test=20, n_gen=10, epochs=1, seeds=(0,)), tmp_path)
+    table = (tmp_path / "results_phase1.md").read_text()
+    assert "nan" not in table and "± n/a" in table

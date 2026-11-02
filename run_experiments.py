@@ -46,13 +46,15 @@ class Config:
 
 
 def mean_std(values):
-    """Mean and sample standard deviation (ddof=1: only 3 seeds)."""
+    """Mean and sample standard deviation (ddof=1: only 3 seeds); std is 0 for a single value."""
+    if len(values) < 2:
+        return float(np.mean(values)), 0.0
     return float(np.mean(values)), float(np.std(values, ddof=1))
 
 
 def fmt(values):
     m, s = mean_std(values)
-    return f"{m:.3f} ± {s:.3f}"
+    return f"{m:.3f} ± {s:.3f}" if len(values) > 1 else f"{m:.3f} ± n/a"
 
 
 def _subset(batch, keep):
@@ -105,7 +107,7 @@ def _plot(results, outdir, filename, xlabel, train_range):
     for model_name, runs in results["runs"].items():
         xs = sorted(int(v) for v in runs[0]["generalisation"])
         series = np.array([[r["generalisation"][str(x)]["iou_m"] for x in xs] for r in runs])
-        mean, std = series.mean(0), series.std(0, ddof=1)
+        mean, std = series.mean(0), (series.std(0, ddof=1) if len(series) > 1 else np.zeros(len(xs)))
         ax.plot(xs, mean, marker="o", label=LABELS[model_name])
         ax.fill_between(xs, mean - std, mean + std, alpha=0.2)
     ax.axvspan(*train_range, color="gray", alpha=0.1, label="training range")
