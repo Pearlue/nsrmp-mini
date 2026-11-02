@@ -142,3 +142,18 @@ def test_multi_step_instruction_applies_steps_in_order_on_the_updated_scene():
             assert s == [ex.subjects[k]] and r == [ex.refs[k]]
             boxes[s[0]] = apply_action(move[1], boxes[s[0]], boxes[r[0]])
         assert np.allclose(ex.final_boxes, np.array(boxes))
+
+
+def test_feature_noise_level_can_be_raised_without_changing_the_scenes():
+    from nsrmp.data import make_dataset, feature_matrix, COLOURS, SHAPES
+    clean, noisy = make_dataset(20, seed=5), make_dataset(20, seed=5, feature_noise=0.5)
+    P = feature_matrix()
+    resid = []
+    for a, b in zip(clean, noisy):
+        assert a.text == b.text and np.allclose(a.final_boxes, b.final_boxes)
+        for o, f in zip(b.objs, b.feats):
+            onehot = np.zeros(9)
+            onehot[COLOURS.index(o.colour)] = 1
+            onehot[6 + SHAPES.index(o.shape)] = 1
+            resid.append(f - P @ onehot)
+    assert 0.45 < np.std(resid) < 0.55

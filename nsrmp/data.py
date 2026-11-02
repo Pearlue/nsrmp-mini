@@ -185,15 +185,15 @@ class Example:
         return len(self.program)
 
 
-def object_features(rng, objs):
+def object_features(rng, objs, noise=FEATURE_NOISE):
     onehots = np.zeros((len(objs), len(COLOURS) + len(SHAPES)))
     for i, o in enumerate(objs):
         onehots[i, COLOURS.index(o.colour)] = 1
         onehots[i, len(COLOURS) + SHAPES.index(o.shape)] = 1
-    return onehots @ feature_matrix().T + FEATURE_NOISE * rng.randn(len(objs), FEATURE_DIM)
+    return onehots @ feature_matrix().T + noise * rng.randn(len(objs), FEATURE_DIM)
 
 
-def make_example(rng, n_objects, complex_flags):
+def make_example(rng, n_objects, complex_flags, feature_noise=FEATURE_NOISE):
     """One scene + instruction with len(complex_flags) steps. Steps see the updated scene."""
     for _ in range(2000):
         objs = gen_scene(rng, n_objects)
@@ -208,14 +208,15 @@ def make_example(rng, n_objects, complex_flags):
             boxes[s] = apply_action(move[1], boxes[s], boxes[r])
             texts.append(text); program.append(move); subjects.append(s); refs.append(r)
         else:
-            return Example(objs, object_features(rng, objs), ", then ".join(texts),
+            return Example(objs, object_features(rng, objs, feature_noise), ", then ".join(texts),
                            tuple(program), subjects, refs, np.array(boxes), any(complex_flags))
     raise RuntimeError("could not generate an example")
 
 
-def make_dataset(count, seed, n_objects=(3, 5), n_steps=(1, 1), p_complex=0.5):
+def make_dataset(count, seed, n_objects=(3, 5), n_steps=(1, 1), p_complex=0.5, feature_noise=FEATURE_NOISE):
     """`count` examples; ranges are inclusive. The first step is complex in exactly
-    round(p_complex * count) examples; later steps are complex with probability p_complex."""
+    round(p_complex * count) examples; later steps are complex with probability p_complex.
+    `feature_noise` (sigma of the feature noise) changes only the features, not the scenes."""
     rng = np.random.RandomState(seed)
     first = rng.permutation([True] * round(p_complex * count) + [False] * (count - round(p_complex * count)))
     examples = []
@@ -223,5 +224,5 @@ def make_dataset(count, seed, n_objects=(3, 5), n_steps=(1, 1), p_complex=0.5):
         n = rng.randint(n_objects[0], n_objects[1] + 1)
         steps = rng.randint(n_steps[0], n_steps[1] + 1)
         flags = [bool(first[i])] + [bool(rng.rand() < p_complex) for _ in range(steps - 1)]
-        examples.append(make_example(rng, n, flags))
+        examples.append(make_example(rng, n, flags, feature_noise))
     return examples

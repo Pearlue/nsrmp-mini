@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from run_experiments import Config, mean_std, run_phase1, run_phase2
+from run_experiments import Config, mean_std, run_noise, run_phase1, run_phase2
 
 TINY = Config(n_train=64, n_test=40, n_gen=20, epochs=3, seeds=(0, 1))
 
@@ -36,3 +36,14 @@ def test_phase2_trains_on_one_or_two_steps_and_evaluates_one_to_five(tmp_path):
     assert set(saved["runs"]["ours"][0]["generalisation"]) == {"1", "2", "3", "4", "5"}
     assert (tmp_path / "fig4b_steps.png").stat().st_size > 1000
     assert "steps=5" in (tmp_path / "results_phase2.md").read_text()
+
+
+def test_noise_sweep_trains_both_parse_given_models_at_every_noise_level(tmp_path):
+    run_noise(TINY, tmp_path, levels=(0.1, 0.5))
+    saved = json.loads((tmp_path / "noise.json").read_text())
+    assert set(saved["runs"]) == {"ours", "parsed_baseline"}
+    for model in saved["runs"].values():
+        assert set(model) == {"0.1", "0.5"}
+        assert [r["seed"] for r in model["0.5"]] == [0, 1]
+        assert set(model["0.5"][0]["test"]) == {"overall", "simple", "complex"}
+    assert "σ=0.5" in (tmp_path / "results_noise.md").read_text()

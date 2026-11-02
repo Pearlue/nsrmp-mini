@@ -7,6 +7,7 @@ Paper link: Sec. IV, Table II (simple vs complex instructions, ours vs NMN+) and
     python run_experiments.py --phase 1      # Table II + Fig. 4a analogues
     python run_experiments.py --phase 2      # Fig. 4b analogue (multi-step)
     python run_experiments.py --phase all
+    python run_experiments.py --phase noise  # feature-noise sweep (not part of "all")
 """
 import argparse
 import json
@@ -175,9 +176,41 @@ def run_phase2(cfg, outdir):
     return results
 
 
+NOISE_LEVELS = (0.1, 0.3, 0.5)
+
+
+def run_noise(cfg, outdir, levels=NOISE_LEVELS):
+    """Feature-noise sweep on phase-1 data (train and test at the same sigma): NSModel vs the
+    parse-matched baseline. A cheap stand-in for the paper's gold vs detected box gap."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    runs, start = {}, time.time()
+    for sigma in levels:
+        for seed in cfg.seeds:
+            train_data = collate(make_dataset(cfg.n_train, seed=seed, feature_noise=sigma))
+            test = collate(make_dataset(cfg.n_test, seed=1000 + seed, feature_noise=sigma))
+            for model_name, factory in (("ours", NSModel), ("parsed_baseline", ParsedNeuralBaseline)):
+                torch.manual_seed(seed)
+                model = factory()
+                train(model, train_data, cfg.epochs, seed=seed)
+                record = {"seed": seed, "test": _evaluate_splits(model, test)}
+                runs.setdefault(model_name, {}).setdefault(str(sigma), []).append(record)
+                print(f"[noise] sigma {sigma} seed {seed} {model_name}: "
+                      f"IOU-M {record['test']['overall']['iou_m']:.3f}", flush=True)
+    results = {"config": asdict(cfg), "runs": runs, "total_seconds": time.time() - start}
+    (outdir / "noise.json").write_text(json.dumps(results, indent=1))
+    columns = [(str(sigma), metric) for metric in ("iou_m", "subject_acc") for sigma in levels]
+    header = [f"{'IOU-M' if m == 'iou_m' else 'Subject acc.'} σ={sig}" for sig, m in columns]
+    table = _table(results, columns, header,
+                   lambda by_sigma, c: fmt([r["test"]["overall"][c[1]] for r in by_sigma[c[0]]]))
+    (outdir / "results_noise.md").write_text(
+        "### Feature-noise sweep, phase-1 test set (mean ± sample std over seeds)\n\n" + table + "\n")
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=["1", "2", "all"], default="all")
+    parser.add_argument("--phase", choices=["1", "2", "all", "noise"], default="all")
     parser.add_argument("--out", default="results")
     parser.add_argument("--epochs", type=int, default=Config.epochs)
     parser.add_argument("--n-train", type=int, default=Config.n_train)
@@ -188,6 +221,8 @@ def main():
         run_phase1(cfg, args.out)
     if args.phase in ("2", "all"):
         run_phase2(cfg, args.out)
+    if args.phase == "noise":
+        run_noise(cfg, args.out)
 
 
 if __name__ == "__main__":
