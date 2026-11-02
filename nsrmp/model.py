@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from nsrmp.data import ANY, CONCEPTS, FEATURE_DIM
+from nsrmp.executor import Executor
 
 GAMMA, TAU = 0.2, 0.1  # Filter threshold and temperature (NS-CL style)
 N_REAL_CONCEPTS = len(CONCEPTS) - 1  # every concept except the ANY wildcard
@@ -34,3 +35,52 @@ class Concepts(nn.Module):
         logits = self.rel_mlp(torch.cat([bi, bj, 10 * (bi - bj)], dim=-1))  # (B, N, N, 4)
         idx = rel_ids[:, None, None, None].expand(-1, N, N, 1)
         return torch.sigmoid(logits.gather(-1, idx)[..., 0])
+
+
+class ActionSimulator(nn.Module):
+    """Paper Sec. III-C: (action, subject box, reference box) -> new subject box.
+
+    The MLP predicts an offset added to the subject box, which makes "stay the same size" the
+    easy default to learn.
+    """
+
+    def __init__(self, n_actions=4, emb_dim=16, hidden=128):
+        super().__init__()
+        self.action_emb = nn.Embedding(n_actions, emb_dim)
+        self.mlp = nn.Sequential(nn.Linear(emb_dim + 8, hidden), nn.ReLU(),
+                                 nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 4))
+
+    def forward(self, action_emb, subj_box, ref_box):
+        return subj_box + self.mlp(torch.cat([action_emb, subj_box, ref_box], dim=-1))
+
+
+def apply_move(sim, boxes, subj_w, ref_w, action_emb):
+    """Move the (soft) subject next to the (soft) reference; other objects keep their boxes.
+
+    boxes (B, N, 4); subj_w, ref_w (B, N); action_emb (B, E).
+    box_hat_i = (1 - w_i) * box_i + w_i * AS(action, subject box, reference box)
+    """
+    subj_box = torch.einsum("bn,bnk->bk", subj_w, boxes)
+    ref_box = torch.einsum("bn,bnk->bk", ref_w, boxes)
+    new_box = sim(action_emb, subj_box, ref_box)
+    return (1 - subj_w[..., None]) * boxes + subj_w[..., None] * new_box[:, None, :]
+
+
+class NSModel(nn.Module):
+    """Parser-given programs executed softly; trained end to end from final boxes only."""
+
+    def __init__(self):
+        super().__init__()
+        self.concepts = Concepts()
+        self.sim = ActionSimulator()
+        self.executor = Executor(self.concepts)
+
+    def forward(self, batch):
+        """Returns predicted final boxes (B, N, 4) and subject weights per step (B, S, N)."""
+        boxes, subj_ws = batch.boxes, []
+        for k in range(batch.subjects.shape[1]):
+            moves = [prog[k] if len(prog) > k else None for prog in batch.programs]
+            subj, ref, action = self.executor.run_step(moves, batch.feats, boxes, batch.mask)
+            boxes = apply_move(self.sim, boxes, subj, ref, self.sim.action_emb(action))
+            subj_ws.append(subj)
+        return boxes, torch.stack(subj_ws, dim=1)
