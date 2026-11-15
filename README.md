@@ -8,6 +8,12 @@ A small, from-scratch re-implementation of the core ideas of
 
 made for the COMP3314 bonus task (a small re-implementation study, not a reproduction).
 
+## Issue #1 development proposal
+
+A documentation-only plan for the learned parser and REINFORCE extension is available in
+[docs/issue-1/README.md](docs/issue-1/README.md). The implementation is not yet present;
+the existing models, tests and reported results remain unchanged.
+
 ## What this is, and what it is not
 
 It **is** a simplified, runnable study of the paper's central claim: executing a *symbolic program*
