@@ -8,6 +8,13 @@ A small, from-scratch re-implementation of the core ideas of
 
 made for the COMP3314 bonus task (a small re-implementation study, not a reproduction).
 
+## Issue #1 development plan
+
+The [learned-parser development plan](docs/issue-1/README.md) documents the proposed architecture,
+implementation sequence, tests, experiment protocol and current status (in Chinese).
+This is planning documentation only: no learned-parser implementation or new experimental results
+are included yet. Existing results below remain unchanged.
+
 ## What this is, and what it is not
 
 It **is** a simplified, runnable study of the paper's central claim: executing a *symbolic program*
