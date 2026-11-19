@@ -23,6 +23,16 @@ REL_PHRASE = {"left": "to the left of", "right": "to the right of",
               "front": "in front of", "behind": "behind"}
 
 
+def keyword_kind(keyword):
+    if keyword in COLOURS:
+        return "colour"
+    if keyword in SHAPES or keyword == "object":
+        return "noun"
+    if keyword in RELATIONS:
+        return "relation"
+    raise ValueError(f"unknown keyword: {keyword!r}")
+
+
 @dataclass(frozen=True)
 class Obj:
     colour: str

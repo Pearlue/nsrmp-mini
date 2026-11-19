@@ -1,10 +1,14 @@
 """Neuro-symbolic model (paper Sec. III): concepts + Action Simulator + program execution."""
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from nsrmp.data import ANY, CONCEPTS, FEATURE_DIM
+from nsrmp.execution import apply_move, execute_steps
 from nsrmp.executor import Executor
+from nsrmp.learned_lr import RolePolicy
 
 GAMMA, TAU = 0.2, 0.1  # Filter threshold and temperature (NS-CL style)
 N_REAL_CONCEPTS = len(CONCEPTS) - 1  # every concept except the ANY wildcard
@@ -54,26 +58,21 @@ class ActionSimulator(nn.Module):
         return subj_box + self.mlp(torch.cat([action_emb, subj_box, ref_box], dim=-1))
 
 
-def apply_move(sim, boxes, subj_w, ref_w, action_emb):
-    """Move the (soft) subject next to the (soft) reference; other objects keep their boxes.
-
-    boxes (B, N, 4); subj_w, ref_w (B, N); action_emb (B, E).
-    box_hat_i = (1 - w_i) * box_i + w_i * AS(action, subject box, reference box)
-    """
-    subj_box = torch.einsum("bn,bnk->bk", subj_w, boxes)
-    ref_box = torch.einsum("bn,bnk->bk", ref_w, boxes)
-    new_box = sim(action_emb, subj_box, ref_box)
-    return (1 - subj_w[..., None]) * boxes + subj_w[..., None] * new_box[:, None, :]
-
-
 class NSModel(nn.Module):
     """Parser-given programs executed softly; trained end to end from final boxes only."""
 
-    def __init__(self):
+    def __init__(self, *, sim=None):
         super().__init__()
         self.concepts = Concepts()
-        self.sim = ActionSimulator()
+        self.sim = ActionSimulator() if sim is None else sim
         self.executor = Executor(self.concepts)
+
+    def _ground_step(self, moves, feats, boxes, mask):
+        subject, reference, action = self.executor.run_step(moves, feats, boxes, mask)
+        return subject, reference, self.sim.action_emb(action)
+
+    def execute(self, scene, program, *, move_mode):
+        return execute_steps(scene, program, self.sim, self._ground_step, move_mode=move_mode)
 
     def forward(self, batch):
         """Returns predicted final boxes (B, N, 4) and subject weights per step (B, S, N)."""
@@ -84,3 +83,64 @@ class NSModel(nn.Module):
             boxes = apply_move(self.sim, boxes, subj, ref, self.sim.action_emb(action))
             subj_ws.append(subj)
         return boxes, torch.stack(subj_ws, dim=1)
+
+
+@dataclass
+class LearnedOutput:
+    pred_boxes: torch.Tensor
+    subject_weights: torch.Tensor
+    programs: list
+    role_traces: list
+    log_prob: torch.Tensor
+    local_entropy: torch.Tensor
+
+
+class ParseNSModel(NSModel):
+    def __init__(self):
+        nn.Module.__init__(self)
+        self.parser = RolePolicy()
+        self.concepts = Concepts()
+        self.sim = ActionSimulator()
+        self.executor = Executor(self.concepts)
+
+    # Unlike NSModel, flatten K parser samples across B inputs into K*B paths,
+    # so each step uses one batched Executor call instead of K separate calls.
+    def _execute(self, inputs, samples):
+        # K is the number of program samples drawn from the neural parser for each instruction.
+        K, B = len(samples), len(inputs)
+        S, N = inputs.step_mask.shape[1], inputs.boxes.shape[1]
+        boxes = inputs.boxes.unsqueeze(0).expand(K, -1, -1, -1).reshape(K * B, N, 4)
+        feats = inputs.feats.unsqueeze(0).expand(K, -1, -1, -1).reshape(K * B, N, -1)
+        mask = inputs.object_mask.unsqueeze(0).expand(K, -1, -1).reshape(K * B, N)
+        weights = []
+        for s in range(S):
+            moves = [samples[k].programs[b][s] if inputs.step_mask[b, s] else None
+                     for k in range(K) for b in range(B)]
+            subj, ref, action = self.executor.run_step(moves, feats, boxes, mask)
+            boxes = apply_move(self.sim, boxes, subj, ref, self.sim.action_emb(action))
+            weights.append(subj)
+        return boxes.reshape(K, B, N, 4), torch.stack(weights, dim=1).reshape(K, B, S, N)
+
+    # Issue #1 (Execute the program): run sampled programs through the existing
+    # Executor and Action Simulator, chaining predicted scenes across steps.
+    def forward(self, inputs, *, num_samples=1, greedy=True):
+        """inputs: ParserInputs, num_samples: int, greedy: bool
+        -> LearnedOutput(pred_boxes: Tensor[K, B, N, 4], subject_weights: Tensor[K, B, S, N],
+                         programs, role_traces, log_prob: Tensor[K, B], local_entropy: Tensor[K, B])
+        """
+        if num_samples < 1:
+            raise ValueError("num_samples must be positive")
+        if greedy and num_samples != 1:
+            raise ValueError("greedy inference requires num_samples=1")
+        # Sample K candidate program sets.
+        samples = [self.parser.sample(inputs, greedy=greedy) for _ in range(num_samples)]
+
+        # Execute the sampled programs.
+        boxes, weights = self._execute(inputs, samples)
+
+        # Collect predictions and sampling statistics.
+        decisions = (inputs.keyword_mask & inputs.step_mask[..., None]).sum(dim=(1, 2)).clamp(min=1)
+        log_prob = torch.stack([sample.log_prob for sample in samples])
+        entropy = torch.stack([sample.entropy for sample in samples]) / decisions
+        return LearnedOutput(boxes, weights, [sample.programs for sample in samples],
+                             [sample.role_traces for sample in samples], log_prob, entropy)

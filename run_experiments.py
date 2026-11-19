@@ -210,6 +210,72 @@ def run_noise(cfg, outdir, levels=NOISE_LEVELS):
     return results
 
 
+def _evaluation_data(config, seed, steps):
+    offset = config["single_test_seed" if steps == 1 else "multi_test_seed"]
+    return make_dataset(config["test_examples"], offset + seed, n_steps=(steps, steps))
+
+
+def _run_curriculum_seed(group, seed, config):
+    from nsrmp.curriculum import train_group
+    from nsrmp.experiment_eval import evaluate as evaluate_checkpoint
+
+    checkpoint = train_group(group, seed, config)
+    metrics = {f"{steps}-step": evaluate_checkpoint(checkpoint, _evaluation_data(config, seed, steps))
+               for steps in (1, 2)}
+    destination = checkpoint.parent / "metrics.json"
+    result = {"group": group, "seed": seed, "checkpoint": checkpoint.name, **metrics}
+    destination.write_text(json.dumps(result, indent=2, allow_nan=False))
+    return result
+
+
+def _matrix_summary(results):
+    from statistics import mean, stdev
+
+    groups = {}
+    for result in results:
+        groups.setdefault(result["group"], {})[result["seed"]] = result
+
+    def summarize(values):
+        return {"mean": mean(values), "sample_sd": stdev(values) if len(values) > 1 else None}
+
+    steps = ("1-step", "2-step")
+    means = {g: {k: summarize([r[k]["iou_m"] for r in runs.values()]) for k in steps}
+             for g, runs in groups.items()}
+    contrasts = {}
+    for a, b in ((1, 2), (3, 4), (1, 3), (2, 4), (2, 5), (5, 7), (6, 8),
+                 (5, 9), (6, 10), (5, 6), (7, 8), (9, 10)):
+        if a in groups and b in groups:
+            diffs = {k: {s: groups[b][s][k]["iou_m"] - groups[a][s][k]["iou_m"] for s in sorted(groups[a])}
+                     for k in steps}
+            contrasts[f"{b} minus {a}"] = {k: {**summarize(list(d.values())), "by_seed": d}
+                                          for k, d in diffs.items()}
+    return {"groups": means, "paired_differences": contrasts, "runs": results}
+
+
+def _run_curriculum(args):
+    from concurrent.futures import ProcessPoolExecutor
+    from nsrmp.experiment_eval import evaluate as evaluate_checkpoint
+
+    if args.checkpoint:
+        state = torch.load(args.checkpoint, map_location="cpu")
+        torch.set_num_threads(state["config"]["threads"])
+        examples = _evaluation_data(state["config"], state["seed"], args.steps)
+        metrics = evaluate_checkpoint(args.checkpoint, examples, parser_source=args.parser_source,
+                                      move_mode=args.move_mode)
+        print(json.dumps(metrics, indent=2, allow_nan=False))
+        return
+    config = json.loads(args.experiment_config.read_text())
+    config["output"] = str(Path(args.out) / "curriculum")
+    jobs = [(group, seed) for seed in config["seeds"] for group in args.experiment]
+    directory = Path(config["output"])
+    directory.mkdir(parents=True, exist_ok=False)
+    (directory / "config.json").write_text(json.dumps(config, indent=2))
+    with ProcessPoolExecutor(max_workers=min(len(jobs), config["workers"])) as pool:
+        futures = [pool.submit(_run_curriculum_seed, group, seed, config) for group, seed in jobs]
+        results = [future.result() for future in futures]
+    (directory / "summary.json").write_text(json.dumps(_matrix_summary(results), indent=2, allow_nan=False))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase", choices=["1", "2", "all", "noise"], default="all")
@@ -217,8 +283,28 @@ def main():
     parser.add_argument("--epochs", type=int, default=Config.epochs)
     parser.add_argument("--n-train", type=int, default=Config.n_train)
     parser.add_argument("--seeds", type=int, default=len(Config.seeds))
+    parser.add_argument("--learned-parser", choices=("surface_context", "keywords_only", "both"))
+    entry = parser.add_mutually_exclusive_group()
+    entry.add_argument("--experiment", nargs="+", choices=range(1, 11), type=int)
+    entry.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--experiment-config", type=Path, default=Path(__file__).with_name("experiments.json"))
+    parser.add_argument("--parser-source", choices=("learned", "rule"))
+    parser.add_argument("--move-mode", choices=("soft", "hard"))
+    parser.add_argument("--steps", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
+    if args.experiment or args.checkpoint:
+        _run_curriculum(args)
+        return
     cfg = Config(n_train=args.n_train, epochs=args.epochs, seeds=tuple(range(args.seeds)))
+    if args.learned_parser is not None:
+        if args.phase == "noise":
+            parser.error("--learned-parser does not support --phase noise")
+        from run_learned_experiments import run
+
+        modes = (("surface_context", "keywords_only") if args.learned_parser == "both"
+                 else (args.learned_parser,))
+        run(cfg, Path(args.out) / "learned-parser", phase=args.phase, modes=modes)
+        return
     if args.phase in ("1", "all"):
         run_phase1(cfg, args.out)
     if args.phase in ("2", "all"):
