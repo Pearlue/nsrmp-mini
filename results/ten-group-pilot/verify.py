@@ -5,9 +5,9 @@ from pathlib import Path
 import torch
 
 from nsrmp.batch import collate
-from nsrmp.curriculum import build_model
+from nsrmp.model import build
 from nsrmp.data import make_dataset
-from nsrmp.experiment_eval import evaluate
+from experiment_eval import evaluate
 from nsrmp.parser import parse
 
 torch.set_num_threads(1)
@@ -43,7 +43,7 @@ for run in summary["runs"]:
         assert len(h["scene_loss"]) == epochs and all(map(math.isfinite, h["scene_loss"]))
         assert h["updates"] == math.ceil(size / cfg["batch_size"]) * epochs
     torch.manual_seed(s)
-    model = build_model(parser_source=spec["parser_source"], backend=spec["backend"])
+    model = build(parser_source=spec["parser_source"], backend=spec["backend"])
     initial[g] = model.state_dict()
     assert (model.parser is not None) == learned
     assert not learned or any(not torch.equal(v, warm["model"][k]) for k,v in initial[g].items()
@@ -58,7 +58,7 @@ for run in summary["runs"]:
         assert any(k.startswith("parser.") for k in changed) == learned
         assert all(k.startswith((relation, "parser.")) for k in changed)
     with torch.inference_mode():
-        backend = build_model(parser_source=spec["parser_source"], backend=spec["backend"])
+        backend = build(parser_source=spec["parser_source"], backend=spec["backend"])
         backend.load_state_dict(final["model"])
         result = backend.execute(scene, programs, move_mode="hard")
         selected = torch.zeros_like(scene.object_mask)

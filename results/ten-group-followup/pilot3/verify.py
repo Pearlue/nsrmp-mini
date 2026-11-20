@@ -5,9 +5,10 @@ from pathlib import Path
 import torch
 
 from nsrmp.batch import collate
-from nsrmp.curriculum import build_model
-from nsrmp.data import make_dataset
-from nsrmp.experiment_eval import evaluate
+from nsrmp.model import build
+from nsrmp.data import make_dataset, training_examples
+from experiment_eval import evaluate
+from nsrmp.combined_train import epoch_indices, shuffle_epoch
 from nsrmp.parser import parse
 
 torch.set_num_threads(1)
@@ -43,7 +44,7 @@ for run in summary["runs"]:
         assert len(h["scene_loss"]) == epochs and all(map(math.isfinite, h["scene_loss"]))
         assert h["updates"] == math.ceil(size / cfg["batch_size"]) * epochs
     torch.manual_seed(s)
-    model = build_model(parser_source=spec["parser_source"], backend=spec["backend"])
+    model = build(parser_source=spec["parser_source"], backend=spec["backend"])
     initial[g] = model.state_dict()
     assert (model.parser is not None) == learned
     assert not learned or any(not torch.equal(v, warm["model"][k]) for k,v in initial[g].items()
@@ -58,7 +59,7 @@ for run in summary["runs"]:
         assert any(k.startswith("parser.") for k in changed) == learned
         assert all(k.startswith((relation, "parser.")) for k in changed)
     with torch.inference_mode():
-        backend = build_model(parser_source=spec["parser_source"], backend=spec["backend"])
+        backend = build(parser_source=spec["parser_source"], backend=spec["backend"])
         backend.load_state_dict(final["model"])
         result = backend.execute(scene, programs, move_mode="hard")
         selected = torch.zeros_like(scene.object_mask)
@@ -77,16 +78,14 @@ for a,b in ((1,2),(3,4),(5,6),(7,8),(9,10),(5,7),(5,9)):
         assert torch.equal(initial[a][k], initial[b][k])
 print("PASS: 10 independent fits; correct groups, epochs, updates, common initial parameters, stage freezes, hard writes and 20 exact held-out IoU-M replays")
 
-from nsrmp.curriculum import _epoch_indices, _shuffle_epoch, training_examples
-
 examples = training_examples(cfg, 0)
 base = make_dataset(400, 0)
 assert len(examples) == 800 and all(e.is_complex for e in examples[400:])
 assert all(a.text == b.text and (a.final_boxes == b.final_boxes).all() for a,b in zip(base, examples))
 batch = collate(examples, mode="learned", surface_context=True)
 shuffle = torch.Generator().manual_seed(0)
-simple = _shuffle_epoch(_epoch_indices(batch, cfg, "warm"), shuffle)
-mixed = _shuffle_epoch(_epoch_indices(batch, cfg, "mixed"), shuffle)
+simple = shuffle_epoch(epoch_indices(batch, cfg, "warm"), shuffle)
+mixed = shuffle_epoch(epoch_indices(batch, cfg, "mixed"), shuffle)
 assert len(simple) == 200 and (simple < 400).all() and not batch.is_complex[simple].any()
 assert len(mixed) == 400 and batch.is_complex[mixed].sum().item() == 200 and (mixed >= 400).any()
 assert len(mixed.unique()) == 400

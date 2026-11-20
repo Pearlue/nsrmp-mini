@@ -5,12 +5,12 @@ import torch
 
 import nsrmp.batch
 import nsrmp.parser as rule_parser
-import nsrmp.train
+from nsrmp._learned_parser import ROLES, lex_step, role_to_program
 from nsrmp.batch import collate
 from nsrmp.data import REL_PHRASE, RELATIONS, make_dataset
 from nsrmp.learned_lr import RolePolicy
-from nsrmp.learned_parser import ROLES, lex_step, role_to_program
-from nsrmp.model import ParseNSModel
+from nsrmp.combined_train import fit_programs, policy_objective
+from nsrmp.model import build
 from nsrmp.parser import parse
 
 
@@ -62,7 +62,7 @@ def test_toy_expected_reward_improves():
     first_grad = None
     for step in range(12):
         logp = logits.log_softmax(0)[:, None]
-        loss, _ = nsrmp.train._policy_objective(logp, rewards)
+        loss, _ = policy_objective(logp, rewards)
         optimizer.zero_grad()
         loss.backward()
         if step == 0:
@@ -95,8 +95,18 @@ def test_train_parser_never_reads_gold_or_rule_parser(monkeypatch):
     monkeypatch.setattr(nsrmp.batch, "parse", explode)
     monkeypatch.setattr(nsrmp.batch, "parse_roles", explode)
     data = collate(examples, surface_context=True, mode="learned")
-    model = ParseNSModel()
+    model = build(parser_source="learned", backend="symbolic")
     before = [p.detach().clone() for p in model.parameters()]
-    nsrmp.train.train_parser(model, data, epochs=1, num_samples=4)
+    config = dict(epochs=1, curriculum=True, learning_rate=0.003, batch_size=3, num_samples=4,
+                  move_mode="soft", loss="original", beta=1.0, entropy_coef=0.01, gradient_clip=5.0)
+    fit_programs(model, data, config, phases=[("warm", 1)], seed=0)
     assert any(not torch.equal(a, b)
                for a, b in zip(before, model.parameters()))
+
+
+def test_every_draw_contains_all_valid_steps():
+    examples = (make_dataset(1, seed=4, n_steps=(1, 1)) +
+                make_dataset(1, seed=5, n_steps=(2, 2)))
+    inputs = collate(examples, mode="learned").inputs
+    draws = RolePolicy().sample_many(inputs, count=2, greedy=False)
+    assert [tuple(map(len, draw.programs)) for draw in draws] == [(1, 2), (1, 2)]

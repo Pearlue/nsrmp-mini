@@ -13,8 +13,7 @@ import torch.nn.functional as F
 
 from nsrmp.batch import VOCAB
 from nsrmp.data import ACTIONS, ANY, FEATURE_DIM, RELATIONS
-from nsrmp.execution import execute_steps
-from nsrmp.model import ActionSimulator, apply_move
+from nsrmp.execution import ActionSimulator, apply_move, execute_steps
 
 
 def _scorer(hidden):
@@ -109,6 +108,10 @@ class ParsedNeuralBaseline(nn.Module):
         self.find = Find(word_dim, hidden)
         self.action_head = nn.Linear(word_dim, len(ACTIONS))
         self.sim = ActionSimulator() if sim is None else sim
+
+    @property
+    def relation_module(self):
+        return self.find.relation
 
     def bag(self, ids):
         """ids (..., L) -> mean word embedding over non-padding words (zero for an empty group)."""

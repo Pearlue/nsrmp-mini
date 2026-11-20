@@ -28,13 +28,15 @@ like with like**.
 | Paper | File |
 |---|---|
 | Sec. IV-A dataset (here: synthetic scenes, instructions, gold programs, gold final states) | `nsrmp/data.py` |
-| Sec. III-A language parser (handwritten or learned keyword roles) | `nsrmp/parser.py`, `nsrmp/learned_parser.py`, `nsrmp/learned_lr.py` |
+| Sec. III-A language parser (handwritten or learned keyword roles) | `nsrmp/parser.py` and `nsrmp/learned_lr.py`, with private grammar in `nsrmp/_learned_parser.py` |
 | Sec. III-B Visual Reasoner: Scene / Filter / Relate / Unique, NS-CL style soft execution | `nsrmp/executor.py`, `Concepts` in `nsrmp/model.py` |
-| Sec. III-C Action Simulator, predicted final world | `ActionSimulator` and `NSModel` in `nsrmp/model.py`, shared moves in `nsrmp/execution.py` |
-| Sec. III-D loss and curriculum training | `nsrmp/train.py`, `nsrmp/curriculum.py` |
+| Sec. III-C Action Simulator, predicted final world | `ActionSimulator` and shared moves in `nsrmp/execution.py`, symbolic backend in `nsrmp/model.py` |
+| Sec. III-D loss and curriculum training | `nsrmp/train.py` for original mini, `nsrmp/combined_train.py` for program training, with stage schedules in `run_experiments.py` |
 | Sec. IV-B NMN+ baseline (Fig. 3): parse-matched `ParsedNeuralBaseline` and end-to-end GRU `NeuralBaseline` | `nsrmp/baseline.py`, role word groups from `parse_roles` in `nsrmp/parser.py` |
-| Sec. IV-B metrics (IOU, IOU-M, subject and placement accuracy) | `nsrmp/metrics.py` |
+| Sec. IV-B metrics (IOU, IOU-M, subject and placement accuracy) | `nsrmp/metrics.py` and `nsrmp/combined_metrics.py` for learned-parser metrics |
 | Table II, Fig. 4a, Fig. 4b | `run_experiments.py` |
+
+`nsrmp.model.build(parser_source=..., backend=...)` constructs the models used by program training and checkpoint inference. `run_experiments.py` defines the ordered stages and passes them to `nsrmp.combined_train.fit_programs()`. The root-level `experiment_eval.py` saves and replays matrix checkpoints.
 
 ## Simplifications and why
 
@@ -61,7 +63,7 @@ like with like**.
 ```bash
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python -m pytest -q                    # 59 upstream + 103 learned-parser cases
+.venv/bin/python -m pytest -q
 .venv/bin/python run_experiments.py --phase all  # ~7 min on an M2 Pro CPU
 .venv/bin/python diagnose_baseline.py            # ~2 min, explains the GRU baseline result
 .venv/bin/python run_experiments.py --phase noise # ~4.5 min, optional feature-noise sweep
@@ -168,7 +170,7 @@ Schedule A trains jointly for 20 simple epochs and 40 mixed epochs. Schedule B t
 
 The squared loss improved average placement for both parser types. With the symbolic backend, the handwritten parser led on every matched seed. Among learned-parser groups, the staged symbolic model with hard selection scored highest on both instruction lengths. The backend comparison includes the effect of each backend on its own parser during training.
 
-See the [full results and hyperparameter comparisons](learned_parser_result.md) and [reproduction instructions](learned_parser_experiment.md). The original three-seed Phase 1 results (keyword-only and sentence-context settings, including program exact match) are now kept locally rather than tracked in Git.
+Three hyperparameter rounds completed on the refactored training path. Formal audits verified 300 independent fits and all 600 test endpoints. [Experiment instructions](learned_parser_experiment.md) · [Results and per-seed summaries](learned_parser_result.md)
 
 ### Original Table II analogue, test set with 3-5 objects, single step
 

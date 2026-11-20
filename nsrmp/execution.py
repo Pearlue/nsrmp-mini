@@ -1,7 +1,25 @@
 from dataclasses import dataclass
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+
+
+class ActionSimulator(nn.Module):
+    """Paper Sec. III-C: (action, subject box, reference box) -> new subject box.
+
+    The MLP predicts an offset added to the subject box, which makes "stay the same size" the
+    easy default to learn.
+    """
+
+    def __init__(self, n_actions=4, emb_dim=16, hidden=128):
+        super().__init__()
+        self.action_emb = nn.Embedding(n_actions, emb_dim)
+        self.mlp = nn.Sequential(nn.Linear(emb_dim + 8, hidden), nn.ReLU(),
+                                 nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 4))
+
+    def forward(self, action_emb, subj_box, ref_box):
+        return subj_box + self.mlp(torch.cat([action_emb, subj_box, ref_box], dim=-1))
 
 
 @dataclass

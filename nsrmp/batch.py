@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 from nsrmp.data import COLOURS, FEATURE_DIM, SHAPES
+from nsrmp.learned_lr import decode_tokens, encode_step
 from nsrmp.parser import parse, parse_roles, split_steps
 
 VOCAB = (["<pad>", "put", "the", "which", "is", "to", "left", "right", "of", "in", "front",
@@ -52,12 +53,10 @@ class ParserInputs:
     n_steps: torch.Tensor
 
     def step_keywords(self, b, s):
-        from nsrmp.learned_parser import VOCAB
-
         mask = self.keyword_mask[b, s]
         positions = self.keyword_positions[b, s, mask]
         ids = self.context_ids[b, s, positions].tolist()
-        keywords = tuple(VOCAB[word_id] for word_id in ids)
+        keywords = decode_tokens(ids)
         if self.context_lengths[b, s] <= 0 or not 0 < len(keywords) <= 11:
             raise ValueError(f"expected 1 to 11 keywords in example {b}, "
                              f"step {s}: {keywords!r}")
@@ -140,26 +139,23 @@ def _collate_rule(examples):
 # Build keyword-aligned inputs without reading gold roles or parsed programs.
 # Targets remain outside ParserInputs in the returned LearnedBatch.
 def _collate_learned(examples, surface_context):
-    from nsrmp.learned_parser import _WORD_ID as learned_word_id, lex_step
-
     lexer_mode = "surface_context" if surface_context else "keywords_only"
-    clauses = [[lex_step(c, lexer_mode) for c in split_steps(e.text)] for e in examples]
+    clauses = [[encode_step(c, lexer_mode) for c in split_steps(e.text)] for e in examples]
     feats, boxes, final, object_mask = _scene_tensors(examples)
     B = len(examples)
     S = max(len(cs) for cs in clauses)
-    T = max(len(c.context_tokens) for cs in clauses for c in cs)
-    W = max(len(c.keywords) for cs in clauses for c in cs)
+    T = max(len(ids) for cs in clauses for ids, _ in cs)
+    W = max(len(positions) for cs in clauses for _, positions in cs)
     context_ids = np.zeros((B, S, T), dtype=np.int64)
     context_lengths = np.zeros((B, S), dtype=np.int64)
     keyword_positions = np.zeros((B, S, W), dtype=np.int64)
     keyword_mask, step_mask = np.zeros((B, S, W), dtype=bool), np.zeros((B, S), dtype=bool)
     for k, steps in enumerate(clauses):
-        for s, step in enumerate(steps):
-            context_ids[k, s, :len(step.context_tokens)] = [
-                learned_word_id[w] for w in step.context_tokens]
-            context_lengths[k, s] = len(step.context_tokens)
-            keyword_positions[k, s, :len(step.keywords)] = step.keyword_positions
-            keyword_mask[k, s, :len(step.keywords)] = True
+        for s, (ids, positions) in enumerate(steps):
+            context_ids[k, s, :len(ids)] = ids
+            context_lengths[k, s] = len(ids)
+            keyword_positions[k, s, :len(positions)] = positions
+            keyword_mask[k, s, :len(positions)] = True
             step_mask[k, s] = True
     inputs = ParserInputs(
         feats=feats, boxes=boxes, object_mask=object_mask,

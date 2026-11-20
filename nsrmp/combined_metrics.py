@@ -45,13 +45,16 @@ _DENOMINATORS = {"iou": "objects", "iou_m": "moved", "subject_acc": "examples",
                  "placement_acc": "moved", "program_acc": "examples", "step_program_acc": "steps"}
 
 
-def _scene_totals(out, batch, annotations, rows, gold):
+def _scene_totals(programs, result, batch, annotations, rows, gold):
     inputs = batch.inputs
     steps = inputs.step_mask
-    pred, weights = out.pred_boxes[0], out.subject_weights[0]
+    pred = result.final_boxes
+    weights = torch.stack([step.subject for step in result.grounded_program], dim=1)
+    width = weights.shape[1]
+    traced_steps = steps[:, :width]
     objects = inputs.object_mask
     weights = weights.masked_fill(~objects[:, None, :], -torch.inf)
-    valid_weights = steps[..., None] & objects[:, None, :]
+    valid_weights = traced_steps[..., None] & objects[:, None, :]
     if not (torch.isfinite(pred[objects]).all() and torch.isfinite(weights[valid_weights]).all()):
         raise ValueError("non-finite scene prediction")
     moved = annotations.moved[rows] & objects
@@ -59,8 +62,7 @@ def _scene_totals(out, batch, annotations, rows, gold):
     overlap = iou(pred, target)
     center = (pred[..., :2] + pred[..., 2:]) / 2
     inside = ((center >= target[..., :2]) & (center <= target[..., 2:])).all(-1)
-    correct = (weights.argmax(-1) == annotations.subjects[rows]) & steps
-    programs = out.programs[0]
+    correct = (weights.argmax(-1) == annotations.subjects[rows, :width]) & traced_steps
     step_matches = [sum(a == b for a, b in zip(p, g)) for p, g in zip(programs, gold)]
     return {
         "examples": torch.ones_like(inputs.n_steps),
@@ -76,29 +78,32 @@ def _scene_totals(out, batch, annotations, rows, gold):
     }
 
 
-def _diagnose(model, batch, gold, chunk, sampled_count, uniform_count, seed):
+def _diagnose(parser, inputs, gold, chunk, sampled_count, uniform_count, seed):
     sampled_matches = uniform_matches = 0
-    if len(batch) and (sampled_count or uniform_count):
+    if len(inputs) and (sampled_count or uniform_count):
         with torch.random.fork_rng(devices=[]):
             torch.default_generator.manual_seed(seed)
             uniform = RolePolicy().eval() if uniform_count else None
             if uniform is not None:
                 uniform.head.weight.zero_()
                 uniform.head.bias.zero_()
-            for start in range(0, len(batch), chunk):
-                stop = min(start + chunk, len(batch))
-                inputs = batch.inputs.select(range(start, stop))
+            for start in range(0, len(inputs), chunk):
+                stop = min(start + chunk, len(inputs))
+                current = inputs.select(range(start, stop))
                 expected = gold[start:stop]
-                if sampled_count:
-                    out = model(inputs, num_samples=sampled_count, greedy=False)
-                    sampled_matches += sum(p == g for draw in out.programs for p, g in zip(draw, expected))
-                for _ in range(uniform_count):
-                    sample = uniform.sample(inputs, greedy=False)
-                    uniform_matches += sum(p == g for p, g in zip(sample.programs, expected))
+                for policy, count in ((parser, sampled_count), (uniform, uniform_count)):
+                    if not count:
+                        continue
+                    draws = policy.sample_many(current, count=count, greedy=False)
+                    matches = sum(p == g for draw in draws for p, g in zip(draw.programs, expected))
+                    if policy is parser:
+                        sampled_matches += matches
+                    else:
+                        uniform_matches += matches
     result = {"seed": seed}
     for name, count, matches in (("sampled", sampled_count, sampled_matches),
                                  ("mask_uniform", uniform_count, uniform_matches)):
-        draws = len(batch) * count
+        draws = len(inputs) * count
         result[name] = {"count": count, "matches": matches, "draws": draws,
                         "program_acc": matches / draws if draws else None}
     return result
@@ -124,12 +129,14 @@ def evaluate_learned(model, learned_batch, annotations, *, chunk=500,
             rows = range(start, min(start + chunk, len(learned_batch)))
             batch = learned_batch.select(rows)
             gold = annotations.programs[rows.start:rows.stop]
-            values = _scene_totals(model(batch.inputs), batch, annotations, rows, gold)
+            programs = model.parser.sample(batch.inputs, greedy=True).programs
+            result = model.execute(batch.inputs, programs, move_mode="soft")
+            values = _scene_totals(programs, result, batch, annotations, rows, gold)
             for group, keep in zip(groups, (torch.ones_like(batch.is_complex),
                                             ~batch.is_complex, batch.is_complex)):
                 for key, value in values.items():
                     totals[group][key] += value[keep].sum().item()
-        diagnostics = _diagnose(model, learned_batch, annotations.programs, chunk,
+        diagnostics = _diagnose(model.parser, learned_batch.inputs, annotations.programs, chunk,
                                 sampled_count, uniform_count, eval_seed)
     finally:
         model.train(was_training)

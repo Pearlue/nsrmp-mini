@@ -1,11 +1,36 @@
 from dataclasses import dataclass
+from functools import lru_cache
 
 import torch
 import torch.nn as nn
-from torch.distributions import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from nsrmp.learned_parser import ROLES, VOCAB, Grammar, role_to_program
+from nsrmp.data import keyword_kind
+from . import _learned_parser
+
+
+ROLES = _learned_parser.ROLES
+
+
+def encode_step(clause, lexer_mode):
+    step = _learned_parser.lex_step(clause, lexer_mode)
+    return tuple(_learned_parser._WORD_ID[word] for word in step.context_tokens), step.keyword_positions
+
+
+def decode_tokens(ids):
+    return tuple(_learned_parser.VOCAB[word_id] for word_id in ids)
+
+
+@lru_cache(maxsize=None)
+def _role_mask(pattern, prefix):
+    prototypes = {"colour": "red", "noun": "cube", "relation": "left"}
+    grammar = _learned_parser.Grammar(tuple(prototypes[kind] for kind in pattern))
+    for i in range(len(prefix)):
+        grammar.valid_roles(prefix[:i])
+    allowed = grammar.valid_roles(prefix)
+    if not any(allowed):
+        raise ValueError(f"expected a completable role assignment for {pattern!r} after {prefix!r}")
+    return allowed
 
 
 @dataclass
@@ -19,7 +44,7 @@ class ParserSample:
 class RolePolicy(nn.Module):
     def __init__(self):
         super().__init__()
-        self.emb = nn.Embedding(len(VOCAB), 32, padding_idx=0)
+        self.emb = nn.Embedding(len(_learned_parser.VOCAB), 32, padding_idx=0)
         self.gru = nn.GRU(32, 64, batch_first=True, bidirectional=True)
         self.head = nn.Linear(128, len(ROLES))
 
@@ -46,55 +71,49 @@ class RolePolicy(nn.Module):
         logits[active] = self.head(keywords).masked_fill(~mask[..., None], 0)
         return logits
 
-    @staticmethod
-    def _decode_roles(keywords, scores, greedy, b, s):
-        grammar, trace = Grammar(keywords), []
-        log_prob = scores.sum() * 0
-        entropy = scores.sum() * 0
-        for t, (keyword, role_scores) in enumerate(zip(keywords, scores)):
-            valid = torch.tensor(grammar.valid_roles(trace),
-                                 dtype=torch.bool, device=role_scores.device)
-            if not valid.any():
-                raise ValueError(f"expected a completable role assignment in "
-                                 f"example {b}, step {s}, keyword {t}: "
-                                 f"{keywords!r}")
-            masked = role_scores.masked_fill(~valid, -float("inf"))
-            dist = Categorical(logits=masked)
-            selected = masked.argmax() if greedy else dist.sample()
-            log_prob = log_prob + dist.log_prob(selected)
-            entropy = entropy + dist.entropy()
-            role = ROLES[int(selected)]
-            trace.append(role)
-        return role_to_program(keywords, trace), tuple(trace), log_prob, entropy
-
-    # Issue #1 (Build the program): mask invalid roles before sampling and reuse
-    # role_to_program; return the sampled trace's differentiable log probability.
     def sample(self, inputs, greedy=False):
-        """inputs: ParserInputs, greedy: bool
-        -> ParserSample(programs: list[tuple], role_traces: list[tuple],
-                        log_prob: Tensor[B], entropy: Tensor[B])
-        log_prob sums masked trace log-probabilities; entropy sums visited local entropies.
-        """
-        logits = self(inputs)
-        programs, role_traces, log_probs, entropies = [], [], [], []
-        for b in range(inputs.context_ids.shape[0]):
-            moves, traces = [], []
-            log_prob = logits[b].sum() * 0
-            entropy = logits[b].sum() * 0
-            for s in range(inputs.context_ids.shape[1]):
-                if not inputs.step_mask[b, s]:
-                    continue
-                keywords = inputs.step_keywords(b, s)
-                scores = logits[b, s, inputs.keyword_mask[b, s]]
-                move, trace, step_logp, step_entropy = self._decode_roles(
-                    keywords, scores, greedy, b, s)
-                moves.append(move)
-                traces.append(trace)
-                log_prob = log_prob + step_logp
-                entropy = entropy + step_entropy
-            programs.append(tuple(moves))
-            role_traces.append(tuple(traces))
-            log_probs.append(log_prob)
-            entropies.append(entropy)
-        return ParserSample(programs, role_traces, torch.stack(log_probs),
-                            torch.stack(entropies))
+        return self.sample_many(inputs, count=1, greedy=greedy)[0]
+
+    def sample_many(self, inputs, *, count, greedy):
+        if count < 1:
+            raise ValueError("count must be positive")
+        step_pairs = inputs.step_mask.nonzero()
+        words = [inputs.step_keywords(b, s) for b, s in step_pairs.tolist()]
+        patterns = [tuple(map(keyword_kind, row)) for row in words] * count
+        logits = self(inputs)[inputs.step_mask].repeat(count, 1, 1)
+        traces = [() for _ in patterns]
+        log_prob = logits.new_zeros(len(patterns))
+        entropy = torch.zeros_like(log_prob)
+        for pos in range(max(map(len, words), default=0)):
+            active = [i for i, pattern in enumerate(patterns) if pos < len(pattern)]
+            ids = step_pairs.new_tensor(active)
+            allowed = torch.tensor([_role_mask(patterns[i], traces[i]) for i in active],
+                                   device=logits.device)
+            scores = logits[ids, pos].masked_fill(~allowed, -torch.inf)
+            logs = scores.log_softmax(-1)
+            probs = logs.exp()
+            role = scores.argmax(-1, keepdim=True) if greedy else torch.multinomial(probs, 1)
+            log_prob = log_prob.index_add(0, ids, logs.gather(1, role).flatten())
+            local_entropy = -(probs * logs.masked_fill(~allowed, 0)).sum(-1)
+            entropy = entropy.index_add(0, ids, local_entropy)
+            for i, chosen in zip(active, role.flatten().tolist()):
+                traces[i] += (ROLES[chosen],)
+
+        size = len(words)
+        rows = step_pairs[:, 0]
+        lengths = inputs.n_steps.tolist()
+        draws = []
+        for draw in range(count):
+            sl = slice(draw * size, (draw + 1) * size)
+            moves = [_learned_parser.role_to_program(row, trace) for row, trace in zip(words, traces[sl])]
+            programs, role_traces = [], []
+            start = 0
+            for length in lengths:
+                stop = start + length
+                programs.append(tuple(moves[start:stop]))
+                role_traces.append(tuple(traces[sl.start + start:sl.start + stop]))
+                start = stop
+            draws.append(ParserSample(programs, role_traces,
+                                      logits.new_zeros(len(inputs)).index_add(0, rows, log_prob[sl]),
+                                      logits.new_zeros(len(inputs)).index_add(0, rows, entropy[sl])))
+        return draws
